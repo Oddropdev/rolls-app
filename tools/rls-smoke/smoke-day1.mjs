@@ -44,6 +44,13 @@ async function gateA(supabase, label) {
   throw new Error(`Sensitive table leaked rows: ${JSON.stringify(data)}`);
 }
 
+async function rpcLog(supabase, payload) {
+  const { data, error } = await supabase.rpc("log_interaction", payload);
+  if (error) throw error;
+  return data;
+}
+
+
 async function countInteractions(supabase) {
   const { count, error } = await supabase
     .from("user_interactions")
@@ -52,30 +59,33 @@ async function countInteractions(supabase) {
   return count ?? 0;
 }
 
-async function insertSelfInteraction(supabase, userId) {
-  const { error } = await supabase.from("user_interactions").insert([{
-    user_id: userId,
-    event_uuid: crypto.randomUUID(),
-    event_type: "test",
-    meta: {},
-  }]);
-  if (error) throw error;
+async function insertSelfInteraction(supabase) {
+  const res = await rpcLog(supabase, {
+    p_event_uuid: crypto.randomUUID(),
+    p_event_type: "swipe_right",
+    p_game_id: null,
+    p_meta: { surface: "smoke-day1" },
+  });
+  if (!res || res.ok !== true) throw new Error("RPC log_interaction did not return ok:true");
 }
 
-async function gateB(supabaseA, userAId, supabaseB) {
+
+async function gateB_proofOfDeny(supabaseA, supabaseB) {
   const beforeA = await countInteractions(supabaseA);
-  await insertSelfInteraction(supabaseA, userAId);
-  const afterA = await countInteractions(supabaseA);
-  assert(afterA === beforeA + 1, `User A count did not increase by 1 (before=${beforeA}, after=${afterA})`);
-  ok("Gate B (User A): can insert & see own interactions (count +1)");
+  const beforeB = await countInteractions(supabaseB);
 
-  const countB = await countInteractions(supabaseB);
-  if (countB === 0) {
-    ok("Gate B (User B): cannot see User A interactions (count=0)");
-    return;
-  }
-  throw new Error(`User B count=${countB}. On a fresh DB, expect 0. If not fresh, reset or adjust test.`);
+  await insertSelfInteraction(supabaseA);
+
+  const afterA = await countInteractions(supabaseA);
+  const afterB = await countInteractions(supabaseB);
+
+  assert(afterA === beforeA + 1, `User A count did not increase by 1 (before=${beforeA}, after=${afterA})`);
+  ok("Gate B (User A): can log via RPC & see own interactions (count +1)");
+
+  assert(afterB === beforeB, `User B count changed unexpectedly (before=${beforeB}, after=${afterB})`);
+  ok("Gate B (User B): cannot see User A interactions (count unchanged)");
 }
+
 
 async function gateC(supabaseB) {
   const { error } = await supabaseB.from("user_interactions").insert([{
@@ -102,7 +112,7 @@ async function main() {
 
     await gateA(A, "User A");
     await gateA(B, "User B");
-    await gateB(A, userA, B);
+    await gateB_proofOfDeny(A, B);
     await gateC(B);
 
     console.log("\nDONE: Smoke suite finished.");

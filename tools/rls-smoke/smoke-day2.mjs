@@ -36,6 +36,13 @@ async function countInteractions(supabase) {
   return count ?? 0;
 }
 
+async function rpcLog(supabase, payload) {
+  const { data, error } = await supabase.rpc("log_interaction", payload);
+  if (error) throw error;
+  return data;
+}
+
+
 async function createTransferCode(supabase) {
   const { data, error } = await supabase.rpc("create_transfer_code");
   if (error) throw error;
@@ -50,15 +57,7 @@ async function redeemTransferCode(supabase, code) {
   return data;
 }
 
-async function insertInteraction(supabase, userId, eventType) {
-  const { error } = await supabase.from("user_interactions").insert([{
-    user_id: userId,
-    event_uuid: crypto.randomUUID(),
-    event_type: eventType,
-    meta: {},
-  }]);
-  if (error) throw error;
-}
+
 
 async function main() {
   try {
@@ -79,10 +78,20 @@ ok("create_transfer_code returns ok:true + code");
 
 
     const beforeA = await countInteractions(A);
-    await insertInteraction(A, userA, "merge_test_event");
-    const afterA = await countInteractions(A);
-    assert(afterA === beforeA + 1, "User A insert did not increase count by 1");
-    ok("User A has at least 1 interaction to merge");
+
+const resLog = await rpcLog(A, {
+  p_event_uuid: crypto.randomUUID(),
+  p_event_type: "swipe_right",
+  p_game_id: null,
+  p_meta: { surface: "smoke-day2-merge" },
+});
+
+assert(resLog?.ok === true, "RPC log_interaction did not return ok:true");
+
+const afterA = await countInteractions(A);
+assert(afterA === beforeA + 1, "User A log did not increase count by 1");
+ok("User A has at least 1 interaction to merge");
+
 
     const beforeB = await countInteractions(B);
 
