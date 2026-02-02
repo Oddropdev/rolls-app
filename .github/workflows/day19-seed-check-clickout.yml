@@ -1,16 +1,13 @@
 name: day19-seed-check-clickout
 
 on:
-  pull_request:
   push:
+  pull_request:
 
 jobs:
   seed_check:
     name: seed-check (clickout)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tools/rls-smoke
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +19,7 @@ jobs:
         run: npm ci
 
       - name: Day19 seed-check (RPC mint+burn)
-        run: node seed-check-day19-clickout.mjs
+        run: node tools/rls-smoke/seed-check-day19-clickout.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
