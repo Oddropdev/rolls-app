@@ -1,0 +1,9 @@
+{
+  "name": "rolls-app-tools",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@supabase/supabase-js": "2.90.1"
+  }
+}
