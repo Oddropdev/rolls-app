@@ -1,0 +1,30 @@
+name: day19-seed-check-clickout
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  seed_check:
+    name: seed-check (clickout)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/rls-smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: npm ci
+
+      - name: Day19 seed-check (RPC mint+burn)
+        run: node seed-check-day19-clickout.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_GAME_ID: ${{ secrets.TEST_GAME_ID }}
+          CLICKOUT_ALLOW_HOST: ${{ secrets.CLICKOUT_ALLOW_HOST }}
