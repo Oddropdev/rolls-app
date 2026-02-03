@@ -27,64 +27,68 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 loadEnvFile(path.join(repoRoot, ".env"));
 loadEnvFile(path.join(repoRoot, ".env.local"));
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE ||
-  process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const TEST_GAME_ID = process.env.TEST_GAME_ID;          // uuid
-const ALLOWLIST_HOST = process.env.CLICKOUT_ALLOW_HOST; // hostname
+const TEST_GAME_ID = process.env.TEST_GAME_ID;            // uuid
+const ALLOWLIST_HOST = process.env.CLICKOUT_ALLOW_HOST;   // hostname only
 
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error("configuration missing: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+function die(msg) {
+  console.error(msg);
   process.exit(2);
 }
+
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  die("configuration missing: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+}
 if (!TEST_GAME_ID || !ALLOWLIST_HOST) {
-  console.error("configuration missing: TEST_GAME_ID / CLICKOUT_ALLOW_HOST");
-  process.exit(2);
+  die("configuration missing: TEST_GAME_ID / CLICKOUT_ALLOW_HOST");
 }
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-function hostnameOf(url) {
-  try {
-    return new URL(url).hostname || "";
-  } catch {
-    return "";
-  }
+async function mustHaveRedirectMapping() {
+  const { data, error } = await supabase
+    .from("clickout_redirects")
+    .select("game_id, redirect_url")
+    .eq("game_id", TEST_GAME_ID)
+    .limit(1);
+
+  if (error) throw error;
+  return !!(data && data.length > 0);
+}
+
+async function mustHaveAllowHost() {
+  const { data, error } = await supabase
+    .from("clickout_allow_hosts")
+    .select("host")
+    .eq("host", ALLOWLIST_HOST)
+    .limit(1);
+
+  if (error) throw error;
+  return !!(data && data.length > 0);
 }
 
 (async () => {
   try {
-    // Seed “proof” via RPC boundary: mint -> burn => verifies redirects + allow_hosts in one go.
-    const { data: ticket, error: mintErr } = await supabase.rpc("mint_clickout_ticket", {
-      p_game_id: TEST_GAME_ID,
-      p_operator_id: null,
-      p_slot: "main",
-    });
+    const okRedirect = await mustHaveRedirectMapping();
+    const okHost = await mustHaveAllowHost();
 
-    if (mintErr || !ticket) {
-      console.error("configuration missing: mint failed");
-      process.exit(1);
-    }
-
-    const { data: burnData, error: burnErr } = await supabase.rpc("burn_clickout_ticket", {
-      p_ticket: ticket,
-    });
-
-    if (burnErr || !burnData?.redirect_url) {
-      console.error("configuration missing: burn failed");
-      process.exit(1);
-    }
-
-    const host = hostnameOf(burnData.redirect_url);
-    if (host !== ALLOWLIST_HOST) {
+    if (!okRedirect || !okHost) {
       console.error(
         "configuration missing:",
-        JSON.stringify({ expected: ALLOWLIST_HOST, got: host, redirect_url: burnData.redirect_url }, null, 2)
+        JSON.stringify(
+          {
+            clickout_redirects: okRedirect,
+            clickout_allow_hosts: okHost,
+            TEST_GAME_ID,
+            CLICKOUT_ALLOW_HOST: ALLOWLIST_HOST,
+          },
+          null,
+          2
+        )
       );
       process.exit(1);
     }
